@@ -1,6 +1,6 @@
 pandas
 numpy
-pandas-ta
+pandas-ta-classic
 matplotlib
 plotly
 jinja2

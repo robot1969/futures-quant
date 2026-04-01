@@ -17,6 +17,7 @@
 import sys
 from datetime import datetime
 import os
+import argparse
 
 # 设置项目路径
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
@@ -53,6 +54,16 @@ def main():
     7. 策略排名
     8. 输出结果
     """
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='🦞 期货量化模拟盘系统')
+    parser.add_argument('--gui', action='store_true', help='启动桌面仪表盘界面')
+    args = parser.parse_args()
+    
+    # 如果指定了 GUI 模式，启动桌面窗口
+    if args.gui:
+        from gui.dashboard import run_dashboard
+        run_dashboard()
+        return
     # 打印标题
     print("=" * 60)
     print(f"🦞 期货量化模拟盘 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -124,7 +135,8 @@ def main():
     # ========== 步骤 6: 执行交易 ==========
     print("\n💰 【步骤 5/8】执行交易订单...")
     prices = market.get_price_dict()
-    executor.execute_signals(all_signals, prices)
+    # 传递市场数据以便计算动态止损
+    executor.execute_signals(all_signals, prices, market_data=market_data)
     
     # ========== 步骤 7: 更新持仓盈亏 ==========
     print("\n📈 【步骤 6/8】更新持仓浮动盈亏...")

@@ -29,10 +29,11 @@ class MarketDataFeeder:
                     )
                     print(f"   ✅ {symbol}: {len(self.data[symbol])} 条")
         
-        # 2. 如果没有数据，生成模拟数据
+        # 2. 如果没有数据，生成模拟数据并保存
         if not self.data:
             print("⚠️ 无本地数据，生成模拟数据...")
             self._generate_mock_data()
+            self._save_data()  # 保存生成的数据到 CSV
         
         self.last_update = datetime.now()
         return self.data
@@ -100,6 +101,17 @@ class MarketDataFeeder:
             categories[cat] = categories.get(cat, 0) + 1
         for cat, count in categories.items():
             print(f"      {cat}: {count} 个")
+    
+    def _save_data(self):
+        """保存数据到 CSV 文件"""
+        os.makedirs(self.data_dir, exist_ok=True)
+        for symbol, df in self.data.items():
+            filepath = f"{self.data_dir}{symbol}.csv"
+            # 确保 date 列作为普通列保存（不是索引）
+            df_reset = df.reset_index()
+            df_reset.rename(columns={'index': 'date'}, inplace=True)
+            df_reset.to_csv(filepath, index=False)
+        print(f"   💾 已保存 {len(self.data)} 个合约数据到 {self.data_dir}")
     
     def get_ohlcv(self, symbol, start_date=None, end_date=None):
         """获取OHLCV数据"""

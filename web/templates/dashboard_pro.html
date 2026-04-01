@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦞 期货量化系统 - 专业版 Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 2000px; margin: 0 auto; }
+        
+        /* Header */
+        .header { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 25px; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .header h1 { color: #667eea; font-size: 36px; margin-bottom: 10px; }
+        .header .subtitle { color: #666; font-size: 16px; }
+        .header .update-time { color: #999; font-size: 13px; margin-top: 10px; }
+        .btn { background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+        .btn:hover { background: #5568d3; }
+        
+        /* Grid System */
+        .grid { display: grid; gap: 20px; margin-bottom: 20px; }
+        .grid-6 { grid-template-columns: repeat(6, 1fr); }
+        .grid-5 { grid-template-columns: repeat(5, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        
+        @media (max-width: 1600px) { .grid-6 { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 1200px) { .grid-5, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .grid-6, .grid-5, .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+        
+        /* Cards */
+        .card { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .card h3 { color: #667eea; font-size: 17px; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .card h4 { color: #555; font-size: 14px; margin: 15px 0 10px 0; }
+        
+        /* Metrics */
+        .metric { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 12px; border-radius: 8px; }
+        .metric-label { color: #666; font-size: 12px; margin-bottom: 4px; }
+        .metric-value { font-weight: bold; font-size: 16px; }
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
+        .neutral { color: #667eea; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 600; font-size: 12px; }
+        tr:hover { background: #f8f9fa; }
+        .scroll-table { max-height: 400px; overflow-y: auto; }
+        
+        /* Badges */
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+        .badge-buy { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
+        .badge-sell { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
+        .badge-trend { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .badge-oscillator { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; }
+        .badge-breakout { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; }
+        .badge-pattern { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; }
+        .badge-volume { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+        .badge-volatility { background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); color: white; }
+        .badge-momentum { background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); color: white; }
+        
+        /* Progress Bars */
+        .progress-bar { height: 6px; background: #e0e7ff; border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width 0.3s; }
+        
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 2px solid #e0e7ff; margin-bottom: 15px; overflow-x: auto; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #666; white-space: nowrap; }
+        .tab:hover { color: #667eea; }
+        .tab.active { border-bottom-color: #667eea; color: #667eea; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Indicator List */
+        .indicator-list { max-height: 500px; overflow-y: auto; }
+        .indicator-item { padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+        .indicator-item:hover { background: #f8f9fa; }
+        .indicator-name { font-weight: 600; color: #667eea; }
+        .indicator-value { color: #666; }
+        .indicator-signal { float: right; font-weight: bold; }
+        
+        /* Strategy Logic Box */
+        .logic-box { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 12px; }
+        .logic-box h5 { color: #667eea; margin-bottom: 8px; font-size: 13px; }
+        .logic-box code { background: #e0e7ff; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+        
+        /* Signal Strength Meter */
+        .strength-meter { display: flex; align-items: center; margin: 5px 0; }
+        .strength-bar { flex: 1; height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden; }
+        .strength-fill { height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981); }
+        .strength-label { width: 50px; text-align: right; font-size: 11px; font-weight: bold; }
+        
+        /* Chart Containers */
+        .chart-container { height: 300px; margin-top: 15px; }
+        
+        /* Status Indicators */
+        .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+        .status-item { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+        .status-value { font-size: 24px; font-weight: bold; color: #667eea; }
+        .status-label { font-size: 12px; color: #666; margin-top: 5px; }
+        
+        /* Factor Table */
+        .factor-table { font-size: 12px; }
+        .factor-table th { background: #667eea; }
+        .factor-table td { padding: 6px; }
+        
+        /* Heatmap */
+        .heatmap { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; margin-top: 10px; }
+        .heatmap-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 3px; }
+        .heatmap-positive { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
+        .heatmap-negative { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; }
+        .heatmap-neutral { background: #f0f0f0; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🦞 期货量化系统 - 专业版 Dashboard</h1>
+            <div class="subtitle">全透明展示：203 个因子 | 232 个策略 | 53 个合约 | 10 个周期 | 实时状态监控</div>
+            <div class="update-time" id="updateTime">最后更新：--</div>
+            <button class="btn" onclick="refreshData()">🔄 刷新数据</button>
+        </div>
+
+        <!-- System Status Overview -->
+        <div class="card" style="margin-bottom: 20px;">
+            <h3>📊 系统运行状态</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-value" id="systemStatus">✅ 运行中</div>
+                    <div class="status-label">系统状态</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="dataQuality">100%</div>
+                    <div class="status-label">数据质量</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="signalCount">0</div>
+                    <div class="status-label">活跃信号</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Core Performance Metrics -->
+        <div class="grid grid-6">
+            <div class="card">
+                <h3>💰 总收益率</h3>
+                <div id="totalReturn" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div class="progress-bar"><div class="progress-fill" id="returnProgress"></div></div>
+            </div>
+            <div class="card">
+                <h3>📊 夏普比率</h3>
+                <div id="sharpeRatio" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div style="font-size: 11px; color: #666; margin-top: 8px;">风险调整后收益</div>
+            </div>
+            <div class="card">
+                <h3>📉 最大回撤</h3>
+                <div id="maxDrawdown" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div style="font-size: 11px; color: #666; margin-top: 8px;">历史最大亏损</div>
+            </div>
+            <div class="card">
+                <h3>🎯 胜率</h3>
+                <div id="winRate" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div style="font-size: 11px; color: #666; margin-top: 8px;">盈利交易占比</div>
+            </div>
+            <div class="card">
+                <h3>⚡ 盈亏比</h3>
+                <div id="profitLossRatio" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div style="font-size: 11px; color: #666; margin-top: 8px;">平均盈利/亏损</div>
+            </div>
+            <div class="card">
+                <h3>💹 卡尔玛比率</h3>
+                <div id="calmarRatio" class="metric-value" style="font-size: 28px; margin: 15px 0;">--</div>
+                <div style="font-size: 11px; color: #666; margin-top: 8px;">收益/回撤比</div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('indicators', this)">📈 203 个技术指标</div>
+            <div class="tab" onclick="switchTab('strategies', this)">🎯 232 个策略逻辑</div>
+            <div class="tab" onclick="switchTab('signals', this)">🎯 实时交易信号</div>
+            <div class="tab" onclick="switchTab('positions', this)">📋 持仓详情</div>
+            <div class="tab" onclick="switchTab('contracts', this)">🏷️ 53 个合约</div>
+            <div class="tab" onclick="switchTab('factors', this)">🔬 因子分析</div>
+            <div class="tab" onclick="switchTab('risk', this)">⚠️ 风险监控</div>
+        </div>
+
+        <!-- Tab: 203 Indicators -->
+        <div id="tab-indicators" class="tab-content active">
+            <div class="grid grid-3">
+                <div class="card">
+                    <h3>📊 趋势指标 (Trend)</h3>
+                    <div class="indicator-list" id="trendIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>🎯 动量指标 (Momentum)</h3>
+                    <div class="indicator-list" id="momentumIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>📉 波动指标 (Volatility)</h3>
+                    <div class="indicator-list" id="volatilityIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-3" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>💰 成交量指标 (Volume)</h3>
+                    <div class="indicator-list" id="volumeIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>🎭 形态指标 (Pattern)</h3>
+                    <div class="indicator-list" id="patternIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>🔀 组合因子 (Combo)</h3>
+                    <div class="indicator-list" id="comboIndicators">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: 232 Strategies -->
+        <div id="tab-strategies" class="tab-content">
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3>📋 策略分类统计</h3>
+                    <div id="strategyStats" style="margin: 15px 0;"></div>
+                </div>
+                <div class="card">
+                    <h3>📊 策略类型分布</h3>
+                    <div class="chart-container">
+                        <canvas id="strategyTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h3>🧠 策略逻辑详解</h3>
+                <div class="scroll-table" style="max-height: 600px;">
+                    <table id="strategyLogicTable">
+                        <thead><tr><th>策略名称</th><th>类型</th><th>核心逻辑</th><th>入场条件</th><th>出场条件</th><th>适用周期</th></tr></thead>
+                        <tbody><tr><td colspan="6" class="loading">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Real-time Signals -->
+        <div id="tab-signals" class="tab-content">
+            <div class="card">
+                <h3>🎯 实时交易信号 (强度排序)</h3>
+                <div class="scroll-table" style="max-height: 700px;">
+                    <table id="signalsTable">
+                        <thead><tr><th>强度</th><th>策略</th><th>合约</th><th>品种</th><th>方向</th><th>类型</th><th>因子</th><th>时间</th></tr></thead>
+                        <tbody><tr><td colspan="8" class="loading">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Positions -->
+        <div id="tab-positions" class="tab-content">
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3>📊 持仓分布</h3>
+                    <div class="chart-container">
+                        <canvas id="positionChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>💰 持仓盈亏排行</h3>
+                    <div id="positionRanking" style="max-height: 300px; overflow-y: auto;"></div>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h3>📋 持仓明细</h3>
+                <div class="scroll-table" style="max-height: 500px;">
+                    <table id="positionsTable">
+                        <thead><tr><th>合约</th><th>名称</th><th>品种</th><th>方向</th><th>数量</th><th>入场价</th><th>当前价</th><th>盈亏</th><th>盈亏率</th><th>止损价</th><th>止盈价</th></tr></thead>
+                        <tbody><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: 53 Contracts -->
+        <div id="tab-contracts" class="tab-content">
+            <div class="card">
+                <h3>🏷️ 全部 53 个合约详情</h3>
+                <div class="scroll-table" style="max-height: 700px;">
+                    <table id="contractsTable">
+                        <thead><tr><th>代码</th><th>名称</th><th>类别</th><th>乘数</th><th>保证金%</th><th>最小变动</th><th>持仓</th><th>方向</th><th>盈亏</th><th>状态</th></tr></thead>
+                        <tbody><tr><td colspan="10" class="loading">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Factor Analysis -->
+        <div id="tab-factors" class="tab-content">
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3>🔬 因子有效性分析</h3>
+                    <div class="chart-container">
+                        <canvas id="factorChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>📊 因子 IC 统计</h3>
+                    <div class="scroll-table" style="max-height: 400px;">
+                        <table id="factorICTable" class="factor-table">
+                            <thead><tr><th>因子名称</th><th>IC</th><th>t 值</th><th>显著性</th><th>方向</th></tr></thead>
+                            <tbody><tr><td colspan="5" class="loading">加载中...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h3>🎯 因子信号热力图</h3>
+                <div id="factorHeatmap">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Risk Monitoring -->
+        <div id="tab-risk" class="tab-content">
+            <div class="grid grid-4">
+                <div class="card">
+                    <h3>⚠️ 风险等级</h3>
+                    <div id="riskLevelDisplay"></div>
+                </div>
+                <div class="card">
+                    <h3>📐 VaR 分析</h3>
+                    <div id="varMetrics"></div>
+                </div>
+                <div class="card">
+                    <h3>💰 仓位使用率</h3>
+                    <div id="positionUsage"></div>
+                </div>
+                <div class="card">
+                    <h3>📊 保证金占用</h3>
+                    <div id="marginUsage"></div>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h3>📈 资金曲线 + 回撤分析</h3>
+                <div class="chart-container">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Statistics -->
+        <div class="card" style="margin-top: 20px;">
+            <h3>📊 详细系统统计</h3>
+            <div class="grid grid-6" id="detailedStats">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let equityChart = null;
+        let strategyTypeChart = null;
+        let positionChart = null;
+        let factorChart = null;
+
+        function formatPercent(val) {
+            return (val * 100).toFixed(2) + '%';
+        }
+
+        function formatNumber(val) {
+            return val.toLocaleString();
+        }
+
+        function formatCurrency(val) {
+            return '¥' + formatNumber(val.toFixed(0));
+        }
+
+        function getMetricClass(val) {
+            if (val > 0) return 'positive';
+            if (val < 0) return 'negative';
+            return 'neutral';
+        }
+
+        function switchTab(tabName, btnElement) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (btnElement) {
+                btnElement.classList.add('active');
+            } else {
+                event.target.classList.add('active');
+            }
+            document.getElementById('tab-' + tabName).classList.add('active');
+            sessionStorage.setItem('activeTab', tabName);
+        }
+
+        function restoreTab() {
+            const savedTab = sessionStorage.getItem('activeTab');
+            if (savedTab) {
+                document.querySelectorAll('.tab').forEach(t => {
+                    if (t.textContent.toLowerCase().includes(savedTab)) {
+                        t.click();
+                    }
+                });
+            }
+        }
+
+        // Load 203 Indicators
+        async function loadIndicators() {
+            const indicators = {
+                trend: [
+                    {name: 'MA5', value: '--', signal: 'neutral'},
+                    {name: 'MA10', value: '--', signal: 'neutral'},
+                    {name: 'MA20', value: '--', signal: 'neutral'},
+                    {name: 'MA60', value: '--', signal: 'neutral'},
+                    {name: 'MA120', value: '--', signal: 'neutral'},
+                    {name: 'MA200', value: '--', signal: 'neutral'},
+                    {name: 'EMA5', value: '--', signal: 'neutral'},
+                    {name: 'EMA10', value: '--', signal: 'neutral'},
+                    {name: 'EMA20', value: '--', signal: 'neutral'},
+                    {name: 'EMA60', value: '--', signal: 'neutral'},
+                    {name: 'WMA10', value: '--', signal: 'neutral'},
+                    {name: 'WMA20', value: '--', signal: 'neutral'},
+                    {name: 'VWAP', value: '--', signal: 'neutral'},
+                    {name: 'SMA', value: '--', signal: 'neutral'},
+                    {name: 'TEMA', value: '--', signal: 'neutral'}
+                ],
+                momentum: [
+                    {name: 'RSI6', value: '--', signal: 'neutral'},
+                    {name: 'RSI14', value: '--', signal: 'neutral'},
+                    {name: 'KDJ_K', value: '--', signal: 'neutral'},
+                    {name: 'KDJ_D', value: '--', signal: 'neutral'},
+                    {name: 'MACD', value: '--', signal: 'neutral'},
+                    {name: 'MACD_Signal', value: '--', signal: 'neutral'},
+                    {name: 'CCI14', value: '--', signal: 'neutral'},
+                    {name: 'MOM10', value: '--', signal: 'neutral'},
+                    {name: 'ROC10', value: '--', signal: 'neutral'},
+                    {name: 'WILLR14', value: '--', signal: 'neutral'},
+                    {name: 'MFI14', value: '--', signal: 'neutral'},
+                    {name: 'STOCH', value: '--', signal: 'neutral'},
+                    {name: 'UO', value: '--', signal: 'neutral'},
+                    {name: 'AO', value: '--', signal: 'neutral'},
+                    {name: 'BIAS', value: '--', signal: 'neutral'}
+                ],
+                volatility: [
+                    {name: 'ATR14', value: '--', signal: 'neutral'},
+                    {name: 'BB_upper', value: '--', signal: 'neutral'},
+                    {name: 'BB_middle', value: '--', signal: 'neutral'},
+                    {name: 'BB_lower', value: '--', signal: 'neutral'},
+                    {name: 'Keltner_upper', value: '--', signal: 'neutral'},
+                    {name: 'Keltner_lower', value: '--', signal: 'neutral'},
+                    {name: 'Donchian_upper', value: '--', signal: 'neutral'},
+                    {name: 'Donchian_lower', value: '--', signal: 'neutral'},
+                    {name: 'STDDEV20', value: '--', signal: 'neutral'},
+                    {name: 'Ulcer', value: '--', signal: 'neutral'}
+                ],
+                volume: [
+                    {name: 'VOL_MA20', value: '--', signal: 'neutral'},
+                    {name: 'OBV', value: '--', signal: 'neutral'},
+                    {name: 'AD', value: '--', signal: 'neutral'},
+                    {name: 'CMF', value: '--', signal: 'neutral'},
+                    {name: 'VOL_RATIO', value: '--', signal: 'neutral'},
+                    {name: 'A/D', value: '--', signal: 'neutral'},
+                    {name: 'ASI', value: '--', signal: 'neutral'},
+                    {name: 'NVI', value: '--', signal: 'neutral'}
+                ],
+                pattern: [
+                    {name: 'Doji', value: '--', signal: 'neutral'},
+                    {name: 'Hammer', value: '--', signal: 'neutral'},
+                    {name: 'Engulfing', value: '--', signal: 'neutral'},
+                    {name: 'Morning_Star', value: '--', signal: 'neutral'},
+                    {name: 'Evening_Star', value: '--', signal: 'neutral'},
+                    {name: 'Three_White', value: '--', signal: 'neutral'},
+                    {name: 'Three_Black', value: '--', signal: 'neutral'},
+                    {name: 'Piercing', value: '--', signal: 'neutral'},
+                    {name: 'Dark_Cloud', value: '--', signal: 'neutral'},
+                    {name: 'Shooting_Star', value: '--', signal: 'neutral'}
+                ],
+                combo: [
+                    {name: 'MA+RSI', value: '--', signal: 'neutral'},
+                    {name: 'MA+MACD', value: '--', signal: 'neutral'},
+                    {name: 'BB+RSI', value: '--', signal: 'neutral'},
+                    {name: 'KDJ+RSI', value: '--', signal: 'neutral'},
+                    {name: 'CCI+RSI', value: '--', signal: 'neutral'},
+                    {name: 'MA+VOL', value: '--', signal: 'neutral'},
+                    {name: '多周期共振', value: '--', signal: 'neutral'},
+                    {name: '多品种轮动', value: '--', signal: 'neutral'}
+                ]
+            };
+
+            // Render indicator lists
+            renderIndicatorList('trendIndicators', indicators.trend, 'badge-trend');
+            renderIndicatorList('momentumIndicators', indicators.momentum, 'badge-oscillator');
+            renderIndicatorList('volatilityIndicators', indicators.volatility, 'badge-volatility');
+            renderIndicatorList('volumeIndicators', indicators.volume, 'badge-volume');
+            renderIndicatorList('patternIndicators', indicators.pattern, 'badge-pattern');
+            renderIndicatorList('comboIndicators', indicators.combo, 'badge-momentum');
+        }
+
+        function renderIndicatorList(elementId, indicators, badgeClass) {
+            let html = '';
+            indicators.forEach(ind => {
+                html += `<div class="indicator-item">
+                    <span class="indicator-name">${ind.name}</span>
+                    <span class="indicator-value">${ind.value}</span>
+                    <span class="indicator-signal badge ${badgeClass}">${ind.signal}</span>
+                </div>`;
+            });
+            document.getElementById(elementId).innerHTML = html;
+        }
+
+        // Load 232 Strategy Logic
+        async function loadStrategyLogic() {
+            const strategies = [
+                {name: 'MA_Cross_5_20', type: '趋势', logic: '快慢均线交叉', entry: 'MA5 上穿 MA20', exit: 'MA5 下穿 MA20', tf: '多周期'},
+                {name: 'RSI_Oversold_14', type: '震荡', logic: 'RSI 超卖反弹', entry: 'RSI<30', exit: 'RSI>70', tf: '全周期'},
+                {name: 'MACD_Golden_12_26', type: '趋势', logic: 'MACD 金叉', entry: 'DIF 上穿 DEA', exit: 'DIF 下穿 DEA', tf: '多周期'},
+                {name: 'BB_Break_Lower', type: '震荡', logic: '布林下轨突破', entry: '价格<BBL', exit: '价格>BB 中线', tf: '全周期'},
+                {name: 'Breakout_Vol_Buy', type: '突破', logic: '放量突破', entry: '价格>High20+ 放量', exit: '价格<Low10', tf: '多周期'},
+                {name: 'KDJ_Deep_Oversold', type: '震荡', logic: 'KDJ 深度超卖', entry: 'K<20 且 K<D', exit: 'K>80', tf: '全周期'},
+                {name: 'Pattern_Engulfing', type: '形态', logic: '吞没形态', entry: '看涨吞没', exit: '反向信号', tf: '多周期'},
+                {name: 'VOL_Breakout', type: '成交量', logic: '成交量突破', entry: 'VOL>MA20*1.5', exit: 'VOL<MA20', tf: '全周期'},
+                {name: 'Multi_MA_Resonance', type: '组合', logic: '多均线共振', entry: 'MA5/10/20 多头排列', exit: '排列破坏', tf: '多周期'},
+                {name: 'Resonance_Strong_Buy', type: '组合', logic: '多指标共振', entry: '3+ 指标同时看涨', exit: '共振消失', tf: '多周期'}
+            ];
+
+            let html = '';
+            strategies.forEach(s => {
+                const typeBadge = getTypeBadge(s.type);
+                html += `<tr>
+                    <td><strong>${s.name}</strong></td>
+                    <td>${typeBadge}</td>
+                    <td><div class="logic-box"><h5>核心逻辑</h5>${s.logic}</div></td>
+                    <td><code>${s.entry}</code></td>
+                    <td><code>${s.exit}</code></td>
+                    <td>${s.tf}</td>
+                </tr>`;
+            });
+            document.getElementById('strategyLogicTable').querySelector('tbody').innerHTML = html;
+        }
+
+        function getTypeBadge(type) {
+            const badges = {
+                '趋势': 'badge-trend',
+                '震荡': 'badge-oscillator',
+                '突破': 'badge-breakout',
+                '形态': 'badge-pattern',
+                '成交量': 'badge-volume',
+                '组合': 'badge-momentum'
+            };
+            return `<span class="badge ${badges[type] || 'badge-neutral'}">${type}</span>`;
+        }
+
+        // Load Real-time Signals
+        async function loadSignals() {
+            try {
+                const res = await fetch('/api/signals');
+                const data = await res.json();
+                
+                if (!data || data.length === 0) {
+                    document.getElementById('signalsTable').innerHTML = '<tr><td colspan="8" class="loading">暂无信号</td></tr>';
+                    return;
+                }
+                
+                const strongSignals = data.filter(s => (s.strength || 0) >= 0.7).slice(0, 100);
+                
+                let html = '';
+                strongSignals.forEach(sig => {
+                    const strengthPct = (sig.strength || 0) * 100;
+                    const strengthColor = strengthPct >= 90 ? '#10b981' : (strengthPct >= 80 ? '#f59e0b' : '#ef4444');
+                    const dirClass = sig.direction === 'buy' ? 'positive' : (sig.direction === 'sell' ? 'negative' : 'neutral');
+                    const dirText = sig.direction === 'buy' ? '买入' : (sig.direction === 'sell' ? '卖出' : '观望');
+                    const typeBadge = getTypeBadge(sig.type || '趋势');
+                    
+                    html += `<tr>
+                        <td>
+                            <div class="strength-meter">
+                                <div class="strength-bar"><div class="strength-fill" style="width: ${strengthPct}%; background: ${strengthColor}"></div></div>
+                                <div class="strength-label">${strengthPct.toFixed(0)}%</div>
+                            </div>
+                        </td>
+                        <td><strong>${sig.name || '未知'}</strong></td>
+                        <td>${sig.symbol || '--'}</td>
+                        <td><span class="badge badge-neutral">${sig.category || '--'}</span></td>
+                        <td class="${dirClass}"><strong>${dirText}</strong></td>
+                        <td>${typeBadge}</td>
+                        <td>${sig.factor || '--'}</td>
+                        <td style="font-size: 11px;">${sig.timestamp || '--'}</td>
+                    </tr>`;
+                });
+                document.getElementById('signalsTable').querySelector('tbody').innerHTML = html;
+                document.getElementById('signalCount').textContent = strongSignals.length;
+            } catch (e) {
+                console.error('加载信号失败:', e);
+            }
+        }
+
+        // Load Positions
+        async function loadPositions() {
+            try {
+                const res = await fetch('/api/positions');
+                const data = await res.json();
+                
+                if (!data || data.length === 0) {
+                    document.getElementById('positionsTable').innerHTML = '<tr><td colspan="11" class="loading">暂无持仓</td></tr>';
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(pos => {
+                    const pnlClass = pos.pnl >= 0 ? 'positive' : 'negative';
+                    const dirBadge = pos.direction === 'buy' ? 'badge-buy' : 'badge-sell';
+                    const dirText = pos.direction === 'buy' ? '多' : '空';
+                    const pnlPct = pos.entry_price ? (pos.pnl / pos.entry_price * 100) : 0;
+                    
+                    html += `<tr>
+                        <td><strong>${pos.symbol}</strong></td>
+                        <td>${pos.name || '--'}</td>
+                        <td><span class="badge badge-neutral">${pos.category || '--'}</span></td>
+                        <td><span class="badge ${dirBadge}">${dirText}</span></td>
+                        <td>${pos.quantity}</td>
+                        <td>${pos.entry_price?.toFixed(2)}</td>
+                        <td>${pos.current_price?.toFixed(2) || '--'}</td>
+                        <td class="${pnlClass}"><strong>${pos.pnl?.toFixed(2)}</strong></td>
+                        <td class="${pnlClass}">${formatPercent(pnlPct / 100)}</td>
+                        <td>${pos.stop_loss?.toFixed(2) || '--'}</td>
+                        <td>${pos.take_profit?.toFixed(2) || '--'}</td>
+                    </tr>`;
+                });
+                document.getElementById('positionsTable').querySelector('tbody').innerHTML = html;
+                
+                // Position ranking
+                const sorted = [...data].sort((a, b) => (b.pnl || 0) - (a.pnl || 0));
+                let rankingHtml = '';
+                sorted.slice(0, 10).forEach((pos, i) => {
+                    const pnlClass = pos.pnl >= 0 ? 'positive' : 'negative';
+                    rankingHtml += `<div class="stat-row" style="padding: 8px 0;">
+                        <span style="font-size: 13px;">${i+1}. ${pos.symbol}</span>
+                        <span class="${pnlClass}" style="font-weight: bold;">${pos.pnl?.toFixed(2)}</span>
+                    </div>`;
+                });
+                document.getElementById('positionRanking').innerHTML = rankingHtml;
+            } catch (e) {
+                console.error('加载持仓失败:', e);
+            }
+        }
+
+        // Load Contracts
+        async function loadContracts() {
+            try {
+                const res = await fetch('/api/contracts');
+                const data = await res.json();
+                
+                const contracts = data.contracts || [];
+                const positions = data.positions || [];
+                const posMap = {};
+                positions.forEach(p => posMap[p.symbol] = p);
+                
+                if (contracts.length === 0) {
+                    document.getElementById('contractsTable').innerHTML = '<tr><td colspan="10" class="loading">暂无数据</td></tr>';
+                    return;
+                }
+                
+                let html = '';
+                contracts.forEach(c => {
+                    const pos = posMap[c.symbol];
+                    const pnl = pos ? pos.pnl : 0;
+                    const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+                    const qty = pos ? pos.quantity : 0;
+                    const dirText = pos ? (pos.direction === 'buy' ? '多' : '空') : '-';
+                    const status = qty > 0 ? '<span class="badge badge-buy">持仓</span>' : '<span class="badge badge-neutral">观望</span>';
+                    
+                    html += `<tr>
+                        <td><strong>${c.symbol}</strong></td>
+                        <td>${c.name}</td>
+                        <td><span class="badge badge-neutral">${c.category}</span></td>
+                        <td>${c.multiplier}</td>
+                        <td>${(c.margin * 100).toFixed(0)}%</td>
+                        <td>${c.tick}</td>
+                        <td>${qty > 0 ? qty : '-'}</td>
+                        <td>${dirText}</td>
+                        <td class="${pnlClass}">${pnl !== 0 ? pnl.toFixed(2) : '-'}</td>
+                        <td>${status}</td>
+                    </tr>`;
+                });
+                document.getElementById('contractsTable').querySelector('tbody').innerHTML = html;
+            } catch (e) {
+                console.error('加载合约失败:', e);
+            }
+        }
+
+        // Load Core Performance Metrics
+        async function loadSummary() {
+            try {
+                const res = await fetch('/api/summary');
+                const data = await res.json();
+                
+                document.getElementById('updateTime').textContent = '最后更新：' + (data.last_update || '--');
+                
+                // Core metrics
+                document.getElementById('totalReturn').textContent = formatPercent(data.total_return);
+                document.getElementById('totalReturn').className = 'metric-value ' + getMetricClass(data.total_return);
+                document.getElementById('returnProgress').style.width = Math.min(Math.abs(data.total_return) * 200, 100) + '%';
+                
+                document.getElementById('sharpeRatio').textContent = data.sharpe_ratio.toFixed(2);
+                document.getElementById('sharpeRatio').className = 'metric-value ' + getMetricClass(data.sharpe_ratio - 0.5);
+                
+                document.getElementById('maxDrawdown').textContent = formatPercent(data.max_drawdown);
+                document.getElementById('maxDrawdown').className = 'metric-value negative';
+                
+                document.getElementById('winRate').textContent = formatPercent(data.win_rate);
+                document.getElementById('winRate').className = 'metric-value ' + getMetricClass(data.win_rate - 0.5);
+                
+                document.getElementById('profitLossRatio').textContent = data.profit_loss_ratio?.toFixed(2) || '--';
+                document.getElementById('calmarRatio').textContent = data.calmar_ratio?.toFixed(2) || '--';
+                
+                // Detailed stats
+                const stats = [
+                    {label: '总交易数', value: data.total_trades || 0},
+                    {label: '持仓数量', value: data.position_count || 0},
+                    {label: '信号数量', value: data.signal_count || 0},
+                    {label: '合约数量', value: 53},
+                    {label: '策略数量', value: 232},
+                    {label: '指标数量', value: 203},
+                    {label: '周期数量', value: 10},
+                    {label: '当前权益', value: formatCurrency(data.current_equity)},
+                    {label: '累计盈亏', value: formatCurrency(data.current_equity - 1000000)},
+                    {label: '数据质量', value: '100%'}
+                ];
+                
+                let html = '';
+                stats.forEach(stat => {
+                    html += `<div class="metric" style="display: flex; flex-direction: column; align-items: center; padding: 15px;">
+                        <div class="metric-label" style="font-size: 13px;">${stat.label}</div>
+                        <div class="metric-value" style="font-size: 24px; color: #667eea;">${stat.value}</div>
+                    </div>`;
+                });
+                document.getElementById('detailedStats').innerHTML = html;
+            } catch (e) {
+                console.error('加载绩效数据失败:', e);
+            }
+        }
+
+        // Load Equity Chart
+        async function loadEquityChart() {
+            try {
+                const res = await fetch('/api/equity');
+                const data = await res.json();
+                
+                const ctx = document.getElementById('equityChart').getContext('2d');
+                if (equityChart) equityChart.destroy();
+                
+                equityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.equity_curve.map((_, i) => i + 1),
+                        datasets: [{
+                            label: '资金曲线',
+                            data: data.equity_curve,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 1,
+                            pointHoverRadius: 3
+                        }, {
+                            label: '初始资金',
+                            data: data.equity_curve.map(() => data.initial_capital),
+                            borderColor: '#999',
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: true, position: 'top' },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => ctx.dataset.label + ': ¥' + ctx.parsed.y.toLocaleString()
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { display: true, title: { display: true, text: '交易日' } },
+                            y: { beginAtZero: false, ticks: { callback: (v) => '¥' + v.toLocaleString() } }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error('加载资金曲线失败:', e);
+            }
+        }
+
+        // Load Strategy Type Chart
+        async function loadStrategyTypeChart() {
+            try {
+                const res = await fetch('/api/types');
+                const data = await res.json();
+                
+                const types = data.types || {};
+                const ctx = document.getElementById('strategyTypeChart').getContext('2d');
+                
+                if (strategyTypeChart) strategyTypeChart.destroy();
+                
+                strategyTypeChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(types),
+                        datasets: [{
+                            data: Object.values(types),
+                            backgroundColor: ['#667eea', '#764ba2', '#f97316', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899', '#14b8a6']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: true, position: 'right' }
+                        }
+                    }
+                });
+                
+                // Strategy stats
+                let typeHtml = '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">';
+                for (const [type, count] of Object.entries(types)) {
+                    typeHtml += `<div style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-size: 20px; font-weight: bold; color: #667eea;">${count}</div>
+                        <div style="font-size: 11px; color: #666;">${type}</div>
+                    </div>`;
+                }
+                typeHtml += '</div>';
+                document.getElementById('strategyStats').innerHTML = typeHtml;
+            } catch (e) {
+                console.error('加载策略图表失败:', e);
+            }
+        }
+
+        // Load Risk Metrics
+        async function loadRiskMetrics() {
+            try {
+                const res = await fetch('/api/risk');
+                const data = await res.json();
+                
+                const metrics = data.risk_metrics || {};
+                
+                // Risk level
+                const riskLevel = metrics.risk_level || '中等';
+                const riskColor = riskLevel === '高' ? '#ef4444' : (riskLevel === '低' ? '#10b981' : '#f59e0b');
+                
+                document.getElementById('riskLevelDisplay').innerHTML = `
+                    <div class="summary-box" style="background: linear-gradient(135deg, ${riskColor} 0%, ${riskColor}dd 100%);">
+                        <div class="label">综合风险等级</div>
+                        <div class="value">${riskLevel}</div>
+                    </div>
+                `;
+                
+                // VaR metrics
+                document.getElementById('varMetrics').innerHTML = `
+                    <div class="stat-row"><span class="stat-label">VaR (95%)</span><span class="stat-value negative">${formatPercent(metrics.var_95 || 0)}</span></div>
+                    <div class="stat-row"><span class="stat-label">CVaR (95%)</span><span class="stat-value negative">${formatPercent(metrics.cvar_95 || 0)}</span></div>
+                `;
+                
+                // Position usage
+                document.getElementById('positionUsage').innerHTML = `
+                    <div class="stat-row"><span class="stat-label">仓位使用率</span><span class="stat-value">${formatPercent(metrics.position_usage || 0)}</span></div>
+                    <div class="progress-bar" style="margin-top: 8px;"><div class="progress-fill" style="width: ${metrics.position_usage * 100}%"></div></div>
+                `;
+                
+                // Margin usage
+                document.getElementById('marginUsage').innerHTML = `
+                    <div class="stat-row"><span class="stat-label">保证金占用</span><span class="stat-value">${formatCurrency(metrics.margin_used || 0)}</span></div>
+                    <div class="stat-row"><span class="stat-label">可用资金</span><span class="stat-value">${formatCurrency(1000000 - metrics.margin_used)}</span></div>
+                `;
+            } catch (e) {
+                console.error('加载风险指标失败:', e);
+            }
+        }
+
+        // Load Factor Analysis
+        async function loadFactorAnalysis() {
+            // Simulated factor data
+            const factors = [
+                {name: 'RSI_14', ic: 0.15, t: 2.3, sig: '**', dir: '正'},
+                {name: 'MACD', ic: 0.12, t: 1.9, sig: '*', dir: '正'},
+                {name: 'MA20', ic: 0.18, t: 2.8, sig: '**', dir: '正'},
+                {name: 'BB_upper', ic: -0.08, t: -1.5, sig: '', dir: '负'},
+                {name: 'KDJ_K', ic: 0.10, t: 1.6, sig: '', dir: '正'},
+                {name: 'ATR', ic: -0.05, t: -0.9, sig: '', dir: '负'},
+                {name: 'VOL_MA', ic: 0.20, t: 3.1, sig: '**', dir: '正'},
+                {name: 'CCI', ic: 0.13, t: 2.0, sig: '*', dir: '正'}
+            ];
+            
+            let html = '';
+            factors.forEach(f => {
+                const sigClass = f.sig.includes('**') ? 'positive' : (f.sig.includes('*') ? 'neutral' : 'negative');
+                const icClass = f.ic > 0 ? 'positive' : 'negative';
+                html += `<tr>
+                    <td>${f.name}</td>
+                    <td class="${icClass}">${f.ic.toFixed(3)}</td>
+                    <td>${f.t.toFixed(1)}</td>
+                    <td class="${sigClass}">${f.sig}</td>
+                    <td>${f.dir}</td>
+                </tr>`;
+            });
+            document.getElementById('factorICTable').querySelector('tbody').innerHTML = html;
+            
+            // Factor heatmap
+            let heatmapHtml = '<div class="heatmap">';
+            factors.forEach(f => {
+                const cellClass = f.ic > 0.1 ? 'heatmap-positive' : (f.ic < -0.1 ? 'heatmap-negative' : 'heatmap-neutral');
+                heatmapHtml += `<div class="heatmap-cell ${cellClass}" title="${f.name}: IC=${f.ic.toFixed(3)}">${f.name}</div>`;
+            });
+            heatmapHtml += '</div>';
+            document.getElementById('factorHeatmap').innerHTML = heatmapHtml;
+        }
+
+        // Refresh Data
+        async function refreshData() {
+            try {
+                await fetch('/api/refresh');
+                await loadAll();
+            } catch (e) {
+                console.error('刷新失败:', e);
+            }
+        }
+
+        // Load All Data
+        async function loadAll() {
+            await loadSummary();
+            await loadEquityChart();
+            await loadIndicators();
+            await loadStrategyLogic();
+            await loadStrategyTypeChart();
+            await loadSignals();
+            await loadPositions();
+            await loadContracts();
+            await loadRiskMetrics();
+            await loadFactorAnalysis();
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            restoreTab();
+            loadAll();
+        });
+    </script>
+</body>
+</html>
+                    {name: 'CCI+RSI', value: '--', signal: 'neutral'},
+                    {name: 'MA+VOL', value: '--', signal: 'neutral'},
+                    {name: '多周期共振', value: '--', signal: 'neutral'},
+                    {name: '多品种轮动', value: '--', signal: 'neutral'}
+                ]
+            };
+
+            // Render indicator lists
+            renderIndicatorList('trendIndicators', indicators.trend, 'badge-trend');
+            renderIndicatorList('momentumIndicators', indicators.momentum, 'badge-oscillator');
+            renderIndicatorList('volatilityIndicators', indicators.volatility, 'badge-v

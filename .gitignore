@@ -1,0 +1,131 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.eggs/
+*.egg-info/
+*.egg
+MANIFEST
+build/
+develop-eggs/
+dist/
+downloads/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/.
+*.egg-info/SOURCES
+*.egg-info/dependency_links
+*.egg-info/requires
+*.egg-info/top_level
+*.egg-info/zip-safe
+*.egg-info/not-zip-safe
+*.egg-info/naive
+*.egg-info/dry-run
+*.egg-info/entry_points
+*.egg-info/namespace_packages
+*.egg-info/dependency_links.txt
+*.egg-info/requires.txt
+*.egg-info/requires.txt.bak
+*.egg-info/top_level.txt
+
+# IDES
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Data files (保持 data 目录但忽略内容)
+data/*.csv
+data/*.pkl
+data/*.h5
+data/*.feather
+data/*.parquet
+
+# Logs
+logs/*.log
+logs/*.txt
+*.log
+
+# Reports
+reports/*.pdf
+reports/*.html
+reports/*.csv
+reports/*.json
+
+# Cache
+cache/*
+!cache/.gitkeep
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pytype
+.pytype/
+
+# Cython
+*.c
+
+# Profiling
+*.prof
+*.pstats
+
+# Coverage
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Flask
+instance/
+.webassets-cache
+
+# AWS
+.aws/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Project specific
+MEMORY.md
+OPTIMIZATION_PLAN.md
+DASHBOARD_GUIDE.md

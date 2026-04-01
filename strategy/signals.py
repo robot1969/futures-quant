@@ -147,6 +147,9 @@ class StrategyGenerator:
         
         close = df["close"]
         
+        # ========== 趋势过滤（新增） ==========
+        trend = self._check_trend_filter(symbol, df)
+        
         # ========== 信号优先级权重 ==========
         SIGNAL_WEIGHTS = {
             "Resonance": 1.0,      # 多指标共振（最强）
@@ -291,6 +294,26 @@ class StrategyGenerator:
         elif sell_confidence >= 3:
             signals.append({"name": f"{symbol}_Resonance_Strong_Sell", "direction": "sell", "strength": 0.95})
         
+        # ========== 应用趋势过滤（新增） ==========
+        # 在牛市趋势中，降低卖出信号强度；在熊市趋势中，降低买入信号强度
+        filtered_signals = []
+        for sig in signals:
+            strength = sig["strength"]
+            
+            # 如果是熊市趋势，降低买入信号强度
+            if trend == "bearish" and sig["direction"] == "buy":
+                strength *= 0.7  # 降低 30%
+            # 如果是牛市趋势，降低卖出信号强度
+            elif trend == "bullish" and sig["direction"] == "sell":
+                strength *= 0.7  # 降低 30%
+            
+            # 只有强度仍然高于阈值的信号才保留
+            if strength >= 0.7:
+                sig["strength"] = strength
+                filtered_signals.append(sig)
+        
+        signals = filtered_signals
+        
         # ========== 信号去重：每个合约只保留一个方向的最强信号 ==========
         if len(signals) <= 1:
             return signals
@@ -329,3 +352,43 @@ class StrategyGenerator:
                 continue
             filtered[name] = sig
         return filtered
+    
+    def _check_trend_filter(self, symbol, df):
+        """趋势过滤：判断当前趋势方向
+        
+        Returns:
+            "bullish": 牛市趋势（只做多）
+            "bearish": 熊市趋势（只做空）
+            "neutral": 震荡市（双向都可以）
+        """
+        if len(df) < 200:
+            return "neutral"
+        
+        close = df["close"]
+        
+        # 方法 1: 使用 200 日均线判断长期趋势
+        ma200 = close.rolling(200).mean().iloc[-1]
+        current_price = close.iloc[-1]
+        
+        if pd.notna(ma200):
+            # 价格在均线上方 2% 以上 → 牛市
+            if current_price > ma200 * 1.02:
+                return "bullish"
+            # 价格在均线下方 2% 以上 → 熊市
+            elif current_price < ma200 * 0.98:
+                return "bearish"
+        
+        # 方法 2: 使用多条均线判断
+        if len(df) >= 60:
+            ma20 = close.rolling(20).mean().iloc[-1]
+            ma60 = close.rolling(60).mean().iloc[-1]
+            
+            if pd.notna(ma20) and pd.notna(ma60):
+                # 多头排列：20 日线 > 60 日线
+                if ma20 > ma60 * 1.01:
+                    return "bullish"
+                # 空头排列：20 日线 < 60 日线
+                elif ma20 < ma60 * 0.99:
+                    return "bearish"
+        
+        return "neutral"

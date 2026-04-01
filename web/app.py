@@ -77,11 +77,11 @@ def run_trading_engine():
     # 策略排名
     rankings = ranker.rank(results)
     
-    # 更新全局数据
+    # 更新全局数据 (传入当前价格到持仓汇总)
     dashboard_data.update({
         "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "performance": results,
-        "positions": executor.get_positions_summary(),
+        "positions": executor.get_positions_summary(current_prices=prices),
         "rankings": rankings.get("top_strategies", []),
         "signals": list(all_signals.values())[:50],  # 限制显示数量
         "equity_curve": portfolio.equity_curve[-100:]  # 最近 100 个点
@@ -94,6 +94,12 @@ def run_trading_engine():
 def dashboard():
     """主页面"""
     return render_template("dashboard.html")
+
+
+@app.route("/pro")
+def dashboard_pro():
+    """专业版页面 - 展示所有因子/策略/逻辑/状态"""
+    return render_template("dashboard_pro.html")
 
 
 @app.route("/api/performance")
@@ -425,6 +431,7 @@ def api_timeframes():
 
 if __name__ == "__main__":
     print("🦞 期货量化 Web Dashboard 启动中...")
-    print(f"📊 访问地址：http://localhost:5000")
+    print(f"📊 访问地址：http://localhost:5001")
+    print(f"🎯 专业版：http://localhost:5001/pro")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)

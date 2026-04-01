@@ -12,8 +12,12 @@ class OrderExecutor:
         self.executed_orders = []
         self.max_position_per_symbol = 0.3  # 单品种最大仓位30%
     
-    def execute_signals(self, signals, market_prices):
-        """执行策略信号"""
+    def execute_signals(self, signals, market_prices, market_data=None):
+        """执行策略信号
+        
+        Args:
+            market_data: 市场数据字典 {symbol: df}，用于计算动态止损
+        """
         print("⚡ 执行交易信号...")
         
         for name, sig in signals.items():
@@ -45,12 +49,18 @@ class OrderExecutor:
             
             # 执行交易
             if direction == "buy":
-                self._buy(symbol, market_prices)
+                # 传入 K 线数据用于动态止损
+                df = market_data.get(symbol) if market_data else None
+                self._buy(symbol, market_prices, df=df)
             elif direction == "sell":
                 self._sell(symbol, market_prices)
     
-    def _buy(self, symbol, prices):
-        """买入开多"""
+    def _buy(self, symbol, prices, df=None):
+        """买入开多
+        
+        Args:
+            df: K 线数据（用于动态止损）
+        """
         if symbol not in prices:
             return False
         if symbol in self.portfolio.positions:
@@ -60,7 +70,8 @@ class OrderExecutor:
         max_qty = self._calculate_max_quantity(symbol, price)
         
         if max_qty > 0:
-            success = self.portfolio.open_position(symbol, "long", max_qty, price)
+            # 传入 df 用于计算动态止损止盈
+            success = self.portfolio.open_position(symbol, "long", max_qty, price, df=df)
             if success:
                 self.executed_orders.append({
                     "time": datetime.now(),
@@ -103,17 +114,35 @@ class OrderExecutor:
         
         return max(0, min(max_qty, 10))  # 最多10手
     
-    def get_positions_summary(self):
-        """持仓汇总"""
+    def get_positions_summary(self, current_prices=None):
+        """持仓汇总
+        
+        Args:
+            current_prices: 当前价格字典 {symbol: price}
+        """
         summary = []
         for symbol, pos in self.portfolio.positions.items():
+            # 获取当前价格
+            current_price = current_prices.get(symbol, pos.entry_price) if current_prices else pos.entry_price
+            
+            # 获取合约信息
+            contract = CONTRACTS.get(symbol, {})
+            category = contract.get('category', '其他')
+            
+            # 计算保证金
+            margin = pos.entry_price * pos.quantity * contract.get('multiplier', 1) * TRADING_CONFIG.get('margin_rate', 0.12)
+            
             summary.append({
                 "symbol": symbol,
+                "name": contract.get('name', symbol),
+                "category": category,
                 "direction": pos.direction,
                 "quantity": pos.quantity,
                 "entry_price": pos.entry_price,
+                "current_price": current_price,
                 "pnl": pos.pnl,
-                "pnl_pct": pos.pnl_pct
+                "pnl_pct": pos.pnl_pct,
+                "margin": margin
             })
         return summary
     

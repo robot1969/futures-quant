@@ -56,7 +56,12 @@ class Portfolio:
         margin = price * CONTRACTS[symbol]["multiplier"] * quantity * TRADING_CONFIG["margin_rate"]
         return self.cash >= margin
     
-    def open_position(self, symbol, direction, quantity, price, stop_loss_pct=0.05, take_profit_pct=0.10):
+    def open_position(self, symbol, direction, quantity, price, stop_loss_pct=0.05, take_profit_pct=0.10, df=None):
+        """开仓（支持动态止损止盈）
+        
+        Args:
+            df: K 线数据（用于计算 ATR 动态止损）
+        """
         if not self.can_open(symbol, quantity, price):
             return False
         mult = CONTRACTS[symbol]["multiplier"]
@@ -67,13 +72,54 @@ class Portfolio:
         self.cash -= (margin + commission + slippage)
         exec_price = price * (1 + TRADING_CONFIG["slippage"]) if direction == "long" else price * (1 - TRADING_CONFIG["slippage"])
         
-        # 计算止损止盈价格
-        stop_loss = exec_price * (1 - stop_loss_pct) if direction == "long" else exec_price * (1 + stop_loss_pct)
-        take_profit = exec_price * (1 + take_profit_pct) if direction == "long" else exec_price * (1 - take_profit_pct)
+        # 计算止损止盈价格（支持动态计算）
+        if df is not None and "ATR_14" in df.columns:
+            # 使用动态止损止盈
+            stop_loss, take_profit = self._calculate_dynamic_stop_profit(
+                symbol, direction, exec_price, df
+            )
+        else:
+            # 使用固定比例止损止盈
+            stop_loss = exec_price * (1 - stop_loss_pct) if direction == "long" else exec_price * (1 + stop_loss_pct)
+            take_profit = exec_price * (1 + take_profit_pct) if direction == "long" else exec_price * (1 - take_profit_pct)
         
         self.positions[symbol] = Position(symbol, direction, quantity, exec_price, stop_loss, take_profit)
-        self.trades.append({"time": datetime.now(), "symbol": symbol, "direction": direction, "quantity": quantity, "price": exec_price, "type": "open", "commission": commission, "stop_loss": stop_loss, "take_profit": take_profit})
+        self.trades.append({
+            "time": datetime.now(), 
+            "symbol": symbol, 
+            "direction": direction, 
+            "quantity": quantity, 
+            "price": exec_price, 
+            "type": "open", 
+            "commission": commission, 
+            "stop_loss": stop_loss, 
+            "take_profit": take_profit
+        })
         return True
+    
+    def _calculate_dynamic_stop_profit(self, symbol, direction, entry_price, df):
+        """基于 ATR 动态计算止损止盈价格
+        
+        止损：2 倍 ATR
+        止盈：3 倍 ATR
+        """
+        atr = df["ATR_14"].iloc[-1]
+        if not pd.notna(atr):
+            # ATR 无效时使用固定比例
+            if direction == "long":
+                return entry_price * 0.95, entry_price * 1.10
+            else:
+                return entry_price * 1.05, entry_price * 0.90
+        
+        # 动态计算
+        if direction == "long":
+            stop_loss = max(entry_price - (2 * atr), entry_price * 0.90)  # 最多不超过 10%
+            take_profit = min(entry_price + (3 * atr), entry_price * 1.20)  # 最多不超过 20%
+        else:  # short
+            stop_loss = min(entry_price + (2 * atr), entry_price * 1.10)
+            take_profit = max(entry_price - (3 * atr), entry_price * 0.80)
+        
+        return stop_loss, take_profit
     
     def close_position(self, symbol, price):
         if symbol not in self.positions:
