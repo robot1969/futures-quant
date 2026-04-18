@@ -38,6 +38,8 @@ from trading.portfolio import Portfolio  # 持仓管理
 from analysis.evaluator import PerformanceEvaluator  # 绩效评估
 from analysis.ranker import StrategyRanker  # 策略排名
 from analysis.backtester import Backtester  # 回测引擎
+from analysis.evaluation_system import FairEvaluationSystem  # 公平公正评估系统
+from analysis.analytics_engine import AnalyticsEngine  # 深度分析引擎
 
 
 def main():
@@ -101,6 +103,10 @@ def main():
     ranker = StrategyRanker()
     # 初始化回测引擎
     backtester = Backtester(TRADING_CONFIG["initial_capital"])
+    # 初始化公平公正评估系统
+    fair_eval = FairEvaluationSystem()
+    # 初始化深度分析引擎
+    analytics = AnalyticsEngine()
     print("   ✅ 组件初始化完成")
     
     # ========== 步骤 3: 加载市场数据 ==========
@@ -166,6 +172,77 @@ def main():
     print(f"\n🏆 综合得分：{rankings.get('score', 0):.2f}")
     print(f"   策略等级：{rankings.get('grade', 'N/A')}")
     print("=" * 60)
+    
+    # ========== 公平公正评估系统 ==========
+    print("\n🔍 【公平公正评估系统】")
+    trades = executor.executed_orders
+    equity_curve = portfolio.equity_curve
+    
+    if equity_curve and len(equity_curve) > 1:
+        fair_results = fair_eval.evaluate_strategy(equity_curve, trades)
+        
+        print(f"   综合评分：{fair_results['composite_score']:.1f}/100")
+        print(f"   索提诺比率：{fair_results['sortino_ratio']:.2f}")
+        print(f"   卡玛比率：{fair_results['calmar_ratio']:.2f}")
+        print(f"   信息比率：{fair_results['information_ratio']:.2f}")
+        print(f"   平均回撤：{fair_results['avg_drawdown']:.2%}")
+        print(f"   回撤持续期：{fair_results['drawdown_duration_days']} 天")
+        print(f"   VaR(95%): {fair_results['var_95']:.2%}")
+        print(f"   CVaR(95%): {fair_results['cvar_95']:.2%}")
+        print(f"   统计显著性：{'✅ 显著' if fair_results['returns_significant'] else '❌ 不显著'} (p={fair_results['p_value']:.3f})")
+        
+        # 评分明细
+        breakdown = fair_results.get('score_breakdown', {})
+        if breakdown:
+            print("\n   📊 评分明细:")
+            print(f"      夏普比率：{breakdown.get('sharpe_component', 0):.1f}/25")
+            print(f"      总收益：{breakdown.get('return_component', 0):.1f}/20")
+            print(f"      最大回撤：{breakdown.get('drawdown_component', 0):.1f}/20")
+            print(f"      索提诺比率：{breakdown.get('sortino_component', 0):.1f}/15")
+            print(f"      胜率：{breakdown.get('win_rate_component', 0):.1f}/10")
+            print(f"      盈亏比：{breakdown.get('pl_ratio_component', 0):.1f}/10")
+    
+    # ========== 绩效归因分析 ==========
+    print("\n📈 【绩效归因分析】")
+    if trades:
+        attribution = analytics.performance_attribution(portfolio, trades)
+        
+        if 'by_symbol' in attribution:
+            print("   品种贡献 Top 5:")
+            for i, (symbol, data) in enumerate(list(attribution['by_symbol'].items())[:5]):
+                icon = "🟢" if data['total_pnl'] > 0 else "🔴"
+                print(f"      {i+1}. {icon} {symbol}: ¥{data['total_pnl']:,.2f} ({data['contribution_pct']:.1f}%)")
+        
+        if 'by_direction' in attribution:
+            long_data = attribution['by_direction'].get('long', {})
+            short_data = attribution['by_direction'].get('short', {})
+            print(f"\n   方向贡献:")
+            print(f"      做多：¥{long_data.get('total_pnl', 0):,.2f} ({long_data.get('contribution_pct', 0):.1f}%)")
+            print(f"      做空：¥{short_data.get('total_pnl', 0):,.2f} ({short_data.get('contribution_pct', 0):.1f}%)")
+    
+    # ========== 策略诊断 ==========
+    print("\n⚠️ 【策略诊断】")
+    if equity_curve and len(equity_curve) > 1:
+        fair_results = fair_eval.evaluate_strategy(equity_curve, trades)
+        diagnosis = analytics.strategy_diagnosis("主策略", fair_results)
+        
+        if diagnosis['issues']:
+            print("   发现问题:")
+            for issue in diagnosis['issues']:
+                print(f"      ❌ [{issue['severity']}] {issue['description']}")
+                print(f"         建议：{issue['suggestion']}")
+        
+        if diagnosis['warnings']:
+            print("   警告:")
+            for warning in diagnosis['warnings']:
+                print(f"      ⚠️ [{warning['severity']}] {warning['description']}")
+        
+        if diagnosis['suggestions'] and not diagnosis['issues']:
+            print("   建议:")
+            for sug in diagnosis['suggestions']:
+                print(f"      💡 {sug}")
+        
+        print(f"\n   整体健康度：{diagnosis['overall_health'].upper()}")
     
     # 显示交易统计
     stats = portfolio.get_stats()
