@@ -39,6 +39,13 @@ from analysis import (
     ReportGenerator
 )
 
+# 增强配置
+EXECUTOR_CONFIG = {
+    'time_stop_loss_days': 3,  # 时间止损：3 天强制平仓
+    'enable_signal_filter': True,  # 启用信号过滤
+    'min_confidence': 0.55  # 最小置信度
+}
+
 
 class FuturesQuantManager:
     """
@@ -115,7 +122,7 @@ class FuturesQuantManager:
             # 初始化所有组件
             self.portfolio = Portfolio(self.initial_capital)
             self.market = MarketDataFeeder(PATHS.get('data', 'data'))
-            self.executor = OrderExecutor(self.portfolio)
+            self.executor = OrderExecutor(self.portfolio, config=EXECUTOR_CONFIG)
             self.generator = StrategyGenerator()
             self.engine = IndicatorEngine()
             self.evaluator = PerformanceEvaluator()
