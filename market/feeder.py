@@ -1,9 +1,16 @@
-"""行情数据模块 - Day 2 优化版"""
+"""行情数据模块 - 增强版（带趋势和波动聚集）
+=============================================================================
+改进：
+  - 趋势阶段模拟（3-5 个完整趋势周期）
+  - 波动聚集性（GARCH 简化版）
+  - 更接近真实市场的价格行为
+=============================================================================
+"""
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
-import requests
+
 
 class MarketDataFeeder:
     """市场数据获取"""
@@ -17,7 +24,7 @@ class MarketDataFeeder:
         """加载所有市场数据"""
         print("📂 加载行情数据...")
         
-        # 1. 尝试从本地CSV加载
+        # 1. 尝试从本地 CSV 加载
         if os.path.exists(self.data_dir):
             for f in os.listdir(self.data_dir):
                 if f.endswith(".csv"):
@@ -33,57 +40,83 @@ class MarketDataFeeder:
         if not self.data:
             print("⚠️ 无本地数据，生成模拟数据...")
             self._generate_mock_data()
-            self._save_data()  # 保存生成的数据到 CSV
+            self._save_data()
         
         self.last_update = datetime.now()
         return self.data
     
     def _generate_mock_data(self, days=500):
-        """生成公平公正的模拟K线数据"""
+        """生成带趋势和波动聚集的模拟 K 线数据（更接近真实市场）"""
         from config import CONTRACTS
         
         # 统一的基础价格（所有合约相同起点，保证公平）
         base_price = 5000
         
         for symbol, info in CONTRACTS.items():
-            # 使用合约代码的hash作为种子，确保每次运行结果一致且公平
+            # 使用合约代码的 hash 作为种子，确保每次运行结果一致且公平
             seed = sum(ord(c) * (10**i) for i, c in enumerate(symbol))
             np.random.seed(seed)
             
             dates = pd.date_range(end=datetime.now(), periods=days, freq="D")
             
-            # ========== 公平的价格生成 ==========
+            # ========== 改进的价格生成：趋势 + 波动聚集 ==========
             
-            # 1. 随机方向（50%上涨，50%下跌）
-            direction = np.random.choice([-1, 1])
+            # 1. 生成趋势阶段（3-5 个完整周期）
+            num_trends = np.random.randint(3, 6)
+            trend_length = days // num_trends
+            trend = np.zeros(days)
             
-            # 2. 趋势成分（较小且随机）
-            trend = np.cumsum(np.random.randn(days) * 0.005 * direction)
+            for i in range(num_trends):
+                start_idx = i * trend_length
+                end_idx = min((i + 1) * trend_length, days)
+                
+                # 随机趋势方向
+                trend_direction = np.random.choice([-1, 1])
+                # 趋势强度（每个阶段 10%-30% 涨跌幅）
+                trend_strength = np.random.uniform(0.1, 0.3)
+                # 平滑过渡（S 曲线）
+                t = np.linspace(0, 1, end_idx - start_idx)
+                smooth_trend = (1 / (1 + np.exp(-10 * (t - 0.3)))) - (1 / (1 + np.exp(-10 * (t - 0.7))))
+                trend[start_idx:end_idx] = trend_direction * trend_strength * base_price * smooth_trend
             
-            # 3. 周期成分（正弦波，模拟市场波动）
-            cycle_period = np.random.uniform(30, 90)  # 随机周期
-            cycle = np.sin(np.linspace(0, 2 * np.pi * days / cycle_period, days)) * base_price * 0.05
+            trend = np.cumsum(trend)  # 累积趋势
             
-            # 4. 波动率（统一范围，避免某些合约波动更大）
-            volatility = np.random.uniform(0.01, 0.025)  # 1%-2.5%固定波动率
+            # 2. 波动聚集（GARCH 简化版：高波动后跟高波动）
+            volatility_base = np.random.uniform(0.015, 0.025)
+            volatility = np.zeros(days)
+            volatility[0] = volatility_base
             
-            # 5. 随机游走
-            random_walk = np.cumsum(np.random.randn(days) * volatility * base_price * 0.3)
+            for i in range(1, days):
+                # 波动率持续性（80% 继承 + 20% 随机）
+                volatility[i] = 0.8 * volatility[i-1] + 0.2 * np.random.uniform(0.01, 0.04)
             
-            # 合并所有成分（公平组合）
-            prices = base_price + trend + cycle + random_walk
+            # 3. 随机游走（带波动聚集）
+            returns = np.random.randn(days) * volatility
+            random_walk = np.cumsum(returns) * base_price * 0.1
+            
+            # 4. 周期成分（正弦波，模拟市场波动）
+            cycle_period = np.random.uniform(30, 90)
+            cycle = np.sin(np.linspace(0, 2 * np.pi * days / cycle_period, days)) * base_price * 0.03
+            
+            # 合并所有成分
+            prices = base_price + trend + random_walk + cycle
             
             # 确保价格为正（设置合理范围）
-            prices = np.clip(prices, base_price * 0.3, base_price * 3)
+            prices = np.clip(prices, base_price * 0.5, base_price * 2.5)
             
-            # 6. 生成OHLC（公平的价格分布）
-            daily_range = np.abs(np.random.randn(days)) * volatility * base_price + base_price * 0.005
+            # 5. 生成 OHLC（带日内波动）
+            daily_range = volatility * prices * np.random.uniform(1.5, 3.0, days)
+            
+            open_prices = prices + np.random.randn(days) * daily_range * 0.3
+            close_prices = prices + np.random.randn(days) * daily_range * 0.3
+            high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.randn(days)) * daily_range * 0.5
+            low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.randn(days)) * daily_range * 0.5
             
             self.data[symbol] = pd.DataFrame({
-                "open": prices + np.random.randn(days) * volatility * base_price * 0.1,
-                "high": prices + daily_range * np.random.rand(days),
-                "low": prices - daily_range * np.random.rand(days),
-                "close": prices,
+                "open": open_prices,
+                "high": high_prices,
+                "low": low_prices,
+                "close": close_prices,
                 "volume": np.random.randint(50000, 200000, days).astype(float)
             }, index=dates)
             
@@ -114,7 +147,7 @@ class MarketDataFeeder:
         print(f"   💾 已保存 {len(self.data)} 个合约数据到 {self.data_dir}")
     
     def get_ohlcv(self, symbol, start_date=None, end_date=None):
-        """获取OHLCV数据"""
+        """获取 OHLCV 数据"""
         if symbol not in self.data:
             return None
         df = self.data[symbol].copy()
@@ -125,29 +158,17 @@ class MarketDataFeeder:
         return df
     
     def get_latest(self, symbol, n=1):
-        """获取最新n条"""
+        """获取最新 n 条"""
         if symbol in self.data:
-            return self.data[symbol].tail(n)
+            return self.data[symbol].iloc[-n:]
         return None
-    
-    def get_close_series(self, symbol):
-        """获取收盘价序列"""
-        if symbol in self.data:
-            return self.data[symbol]["close"]
-        return None
-    
-    def get_multiple_symbols(self, symbols):
-        """获取多个合约数据"""
-        result = {}
-        for symbol in symbols:
-            if symbol in self.data:
-                result[symbol] = self.data[symbol]
-        return result
-    
-    def get_all_symbols(self):
-        """获取所有可用合约"""
-        return list(self.data.keys())
     
     def get_price_dict(self):
         """获取最新价格字典"""
-        return {symbol: df["close"].iloc[-1] for symbol, df in self.data.items() if len(df) > 0}
+        return {symbol: df["close"].iloc[-1] for symbol, df in self.data.items()}
+    
+    def get_prices_history(self, symbol, n=100):
+        """获取历史价格序列"""
+        if symbol in self.data:
+            return self.data[symbol]["close"].iloc[-n:]
+        return None

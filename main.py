@@ -134,7 +134,7 @@ def main():
             df_indicators = engine.calculate_all(df)
             # 生成交易信号
             sigs = generator.generate_for_symbol(symbol, df_indicators)
-            all_signals.update({f"{s['name']}": s for s in sigs})
+            all_signals.update({f"{symbol}_{s['name']}": s for s in sigs})
             signal_count += len(sigs)
     print(f"   ✅ 成功生成 {signal_count} 个交易信号")
     
