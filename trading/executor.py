@@ -23,9 +23,9 @@ class OrderExecutor:
         
         # 增强配置
         self.config = config or {}
-        self.time_stop_loss_days = self.config.get('time_stop_loss_days', 1)  # 时间止损 1 天
-        self.enable_signal_filter = self.config.get('enable_signal_filter', False)  # 关闭信号过滤
-        self.min_confidence = self.config.get('min_confidence', 0.3)  # 降低置信度门槛
+        self.time_stop_loss_days = self.config.get('time_stop_loss_days', 5)  # 延长至 5 天，给趋势更多空间
+        self.enable_signal_filter = True  # 强制开启信号过滤
+        self.min_confidence = self.config.get('min_confidence', 0.5)  # 提高置信度门槛到 0.5
     
     def execute_signals(self, signals, market_prices, market_data=None):
         """执行策略信号

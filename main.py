@@ -110,54 +110,62 @@ def main():
     print("   ✅ 组件初始化完成")
     
     # ========== 步骤 3: 加载市场数据 ==========
-    print("\n📊 【步骤 2/8】加载市场数据...")
-    print("   数据来源：本地随机生成（公平公正）")
-    market_data = market.load_data()
-    symbols = market.get_all_symbols()
-    print(f"   ✅ 成功加载 {len(symbols)} 个期货合约数据")
+    print("\n📊 【步骤 2/8】加载多周期市场数据...")
+    print("   数据来源：本地 Parquet 历史库（多尺度合成）")
     
-    # ========== 步骤 4: 生成策略信号 ==========
-    print("\n🎯 【步骤 3/8】生成交易策略信号...")
-    all_strategy_signals = generator.generate_all()
-    print(f"   ✅ 共生成 {len(all_strategy_signals)} 个交易策略")
-    
-    # ========== 步骤 5: 计算技术指标 ==========
-    print("\n📈 【步骤 4/8】计算技术指标...")
-    all_signals = {}  # 存储所有信号
+    # 为了支持多周期策略，我们需要一个信号汇总表
+    all_signals = {}
     signal_count = 0
-    # 为每个合约计算指标并生成信号
-    for symbol in symbols:
-        # 获取 K 线数据
-        df = market.get_ohlcv(symbol)
-        if df is not None and len(df) > 50:
-            # 计算技术指标
-            df_indicators = engine.calculate_all(df)
-            # 生成交易信号
-            sigs = generator.generate_for_symbol(symbol, df_indicators)
-            all_signals.update({f"{symbol}_{s['name']}": s for s in sigs})
-            signal_count += len(sigs)
-    print(f"   ✅ 成功生成 {signal_count} 个交易信号")
     
-    # ========== 步骤 6: 执行交易 ==========
-    print("\n💰 【步骤 5/8】执行交易订单...")
-    prices = market.get_price_dict()
+    # 遍历所有支持的时间周期
+    for tf_label in TIMEFRAMES.keys():
+        print(f"   ⏳ 正在处理周期: {tf_label}...")
+        # 加载该周期的所有合约数据
+        tf_data = market.load_data(timeframe=tf_label)
+        symbols = market.get_all_symbols()
+        
+        # 为每个合约计算指标并生成信号
+        for symbol in symbols:
+            df = tf_data.get(symbol)
+            if df is not None and len(df) > 50:
+                # 计算技术指标
+                df_indicators = engine.calculate_all(df)
+                # 生成交易信号 (此时信号将包含其周期属性)
+                sigs = generator.generate_for_symbol(symbol, df_indicators)
+                for s in sigs:
+                    # 信号 ID 包含周期，防止冲突: symbol_timeframe_strategyName
+                    signal_id = f"{symbol}_{tf_label}_{s['name']}"
+                    # 注入周期信息到信号对象中
+                    s['timeframe'] = tf_label
+                    all_signals[signal_id] = s
+                    signal_count += 1
+        
+    print(f"   ✅ 成功处理 {len(TIMEFRAMES)} 个周期，共生成 {signal_count} 个多尺度交易信号")
+    
+    # ========== 步骤 4: 汇总信号 ==========
+    print("\n🎯 【步骤 3/8】信号汇总完成")
+    
+    # ========== 步骤 5: 执行交易 ==========
+    print("\n💰 【步骤 4/8】执行交易订单...")
+    # 获取最新价格（默认使用 1d 周期作为基准价）
+    prices = market.get_price_dict(timeframe="1d")
     # 传递市场数据以便计算动态止损
-    executor.execute_signals(all_signals, prices, market_data=market_data)
+    executor.execute_signals(all_signals, prices, market_data=market)
     
-    # ========== 步骤 7: 更新持仓盈亏 ==========
-    print("\n📈 【步骤 6/8】更新持仓浮动盈亏...")
+    # ========== 步骤 6: 更新持仓盈亏 ==========
+    print("\n📈 【步骤 5/8】更新持仓浮动盈亏...")
     # 在评估前，先更新所有持仓的盈亏
     for symbol, pos in portfolio.positions.items():
         if symbol in prices:
             pos.update_pnl(prices[symbol])
     print("   ✅ 持仓盈亏已更新")
     
-    # ========== 步骤 8: 评估绩效 ==========
-    print("\n📉 【步骤 7/8】计算绩效指标...")
+    # ========== 步骤 7: 评估绩效 ==========
+    print("\n📉 【步骤 6/8】计算绩效指标...")
     results = evaluator.evaluate(portfolio)
     
-    # ========== 步骤 9: 策略排名 ==========
-    print("\n🏆 【步骤 8/8】策略排名...")
+    # ========== 步骤 8: 策略排名 ==========
+    print("\n🏆 【步骤 7/8】策略排名...")
     rankings = ranker.rank(results)
     
     # ========== 输出结果 ==========

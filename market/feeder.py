@@ -1,174 +1,198 @@
-"""行情数据模块 - 增强版（带趋势和波动聚集）
+"""
+Market Data Engine - Multi-Scale Synthetic Generator (Optimized)
 =============================================================================
-改进：
-  - 趋势阶段模拟（3-5 个完整趋势周期）
-  - 波动聚集性（GARCH 简化版）
-  - 更接近真实市场的价格行为
+Generates high-fidelity synthetic market data using a top-down approach:
+1. Base Generation (1-minute scale)
+2. Temporal Aggregation (Resampling to 15m, 1h, 1d, etc.)
+3. Parquet Storage (Efficient I/O)
 =============================================================================
 """
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
+from config import CONTRACTS
 
+# Supported Timeframes for the simulation
+TIMEFRAMES = {
+    "1m": "1min",
+    "15m": "15min",
+    "1h": "h",
+    "4h": "4h",
+    "1d": "D",
+    "1w": "W",
+    "1M": "ME"
+}
+
+class MarketGenerator:
+    """Mathematical engines for high-frequency price generation with Regime Switching"""
+    
+    @staticmethod
+    def generate_gbm(start_price, mu, sigma, steps):
+        """Geometric Brownian Motion with Drift"""
+        returns = np.random.normal(loc=mu, scale=sigma, size=steps)
+        price_path = start_price * np.exp(np.cumsum(returns))
+        return price_path
+
+    @staticmethod
+    def generate_ou(start_price, theta, mu, sigma, steps):
+        """Ornstein-Uhlenbeck: Mean Reverting"""
+        dt = 1 
+        prices = np.zeros(steps)
+        prices[0] = start_price
+        for i in range(1, steps):
+            drift = theta * (mu - prices[i-1]) * dt
+            diffusion = sigma * np.sqrt(dt) * np.random.randn()
+            prices[i] = prices[i-1] + drift + diffusion
+        return np.clip(prices, start_price * 0.1, start_price * 10)
+
+    @staticmethod
+    def generate_regime_switching(start_price, steps):
+        """
+        Enhanced Generator: Switches between Trend, Mean-Rev, and Chaos
+        Simulates market phases for better strategy validation.
+        """
+        prices = [start_price]
+        current_price = start_price
+        
+        # Define regimes: (type, duration_range, volatility_scale)
+        regimes = [
+            ('trend', (100, 1000), 0.001), 
+            ('mean_rev', (50, 500), 0.0005),
+            ('chaos', (20, 200), 0.005)
+        ]
+        
+        while len(prices) < steps:
+            regime_type, dur_range, vol = np.random.choice(regimes)
+            duration = np.random.randint(*dur_range)
+            
+            if regime_type == 'trend':
+                drift = np.random.choice([-0.0001, 0.0001])
+                for _ in range(duration):
+                    current_price *= np.exp(np.random.normal(drift, vol))
+                    prices.append(current_price)
+            elif regime_type == 'mean_rev':
+                target = current_price * (1 + np.random.uniform(-0.02, 0.02))
+                theta = np.random.uniform(0.01, 0.05)
+                for _ in range(duration):
+                    current_price += theta * (target - current_price) + np.random.normal(0, vol * current_price)
+                    prices.append(current_price)
+            else: # chaos
+                for _ in range(duration):
+                    jump = 0
+                    if np.random.random() < 0.01: jump = np.random.normal(0, 0.01)
+                    current_price *= np.exp(np.random.normal(0, vol + jump))
+                    prices.append(current_price)
+        
+        return np.array(prices[:steps])
+
+    @staticmethod
+    def generate_jump_diffusion(start_price, mu, sigma, lambda_j, jump_mu, jump_sigma, steps):
+        """Merton Jump-Diffusion: High-freq base + Poisson Jumps"""
+        prices = MarketGenerator.generate_gbm(start_price, mu, sigma, steps)
+        for i in range(1, steps):
+            if np.random.random() < lambda_j:
+                jump_size = np.random.normal(jump_mu, jump_sigma)
+                prices[i:] *= (1 + jump_size)
+        return prices
 
 class MarketDataFeeder:
-    """市场数据获取"""
+    """Optimized Market Data Provider with Global Memory Caching"""
     
-    def __init__(self, data_dir="data/"):
-        self.data_dir = data_dir
-        self.data = {}
+    def __init__(self, base_dir="data/simulated_history/"):
+        self.base_dir = base_dir
+        # Global Cache: { timeframe: { symbol: df } }
+        self._cache = {} 
         self.last_update = None
-    
-    def load_data(self):
-        """加载所有市场数据"""
-        print("📂 加载行情数据...")
+
+    def load_data(self, timeframe="1d"):
+        """
+        Loads data for a specific timeframe into memory cache.
+        Prevents repeated disk I/O across strategy iterations.
+        """
+        if timeframe in self._cache:
+            return self._cache[timeframe]
+
+        print(f"📂 [Cache Miss] Loading Market Data for {timeframe}...")
+        tf_dir = os.path.join(self.base_dir, timeframe)
         
-        # 1. 尝试从本地 CSV 加载
-        if os.path.exists(self.data_dir):
-            for f in os.listdir(self.data_dir):
-                if f.endswith(".csv"):
-                    symbol = f.replace(".csv", "")
-                    self.data[symbol] = pd.read_csv(
-                        f"{self.data_dir}{f}", 
-                        parse_dates=["date"], 
-                        index_col="date"
-                    )
-                    print(f"   ✅ {symbol}: {len(self.data[symbol])} 条")
-        
-        # 2. 如果没有数据，生成模拟数据并保存
-        if not self.data:
-            print("⚠️ 无本地数据，生成模拟数据...")
-            self._generate_mock_data()
-            self._save_data()
+        if os.path.exists(tf_dir) and os.listdir(tf_dir):
+            tf_data = {}
+            for f in os.listdir(tf_dir):
+                if f.endswith(".parquet"):
+                    symbol = f.replace(".parquet", "")
+                    tf_data[symbol] = pd.read_parquet(os.path.join(tf_dir, f))
+            
+            self._cache[timeframe] = tf_data
+            print(f"   ✅ Cached {len(tf_data)} contracts for {timeframe}.")
+        else:
+            print(f"   ⚠️ Data for {timeframe} not found. Generating...")
+            self._generate_full_market_library()
+            return self.load_data(timeframe)
         
         self.last_update = datetime.now()
-        return self.data
-    
-    def _generate_mock_data(self, days=500):
-        """生成带趋势和波动聚集的模拟 K 线数据（更接近真实市场）"""
-        from config import CONTRACTS
-        
-        # 统一的基础价格（所有合约相同起点，保证公平）
-        base_price = 5000
+        return self._cache[timeframe]
+
+    def _generate_full_market_library(self, days=365):
+        """
+        Enhanced Top-Down Generation Pipeline.
+        Uses Regime Switching to create a more adversarial market.
+        """
+        print(f"🧪 Generating Regime-Switching Adversarial Market ({days} days)...")
+        np.random.seed(42)
+        base_steps = 24 * 60 * days 
         
         for symbol, info in CONTRACTS.items():
-            # 使用合约代码的 hash 作为种子，确保每次运行结果一致且公平
-            seed = sum(ord(c) * (10**i) for i, c in enumerate(symbol))
-            np.random.seed(seed)
+            symbol_hash = sum(ord(c) for c in symbol)
+            start_price = 5000.0
             
-            dates = pd.date_range(end=datetime.now(), periods=days, freq="D")
+            # USE ENHANCED REGIME GENERATOR
+            prices = MarketGenerator.generate_regime_switching(start_price, base_steps)
+
+            dates = pd.date_range(end=datetime.now(), periods=base_steps, freq="1min")
+            df_1m = self._create_ohlcv_from_path(prices, dates)
+            self._resample_and_save(symbol, df_1m)
             
-            # ========== 改进的价格生成：趋势 + 波动聚集 ==========
-            
-            # 1. 生成趋势阶段（3-5 个完整周期）
-            num_trends = np.random.randint(3, 6)
-            trend_length = days // num_trends
-            trend = np.zeros(days)
-            
-            for i in range(num_trends):
-                start_idx = i * trend_length
-                end_idx = min((i + 1) * trend_length, days)
-                
-                # 随机趋势方向
-                trend_direction = np.random.choice([-1, 1])
-                # 趋势强度（每个阶段 10%-30% 涨跌幅）
-                trend_strength = np.random.uniform(0.1, 0.3)
-                # 平滑过渡（S 曲线）
-                t = np.linspace(0, 1, end_idx - start_idx)
-                smooth_trend = (1 / (1 + np.exp(-10 * (t - 0.3)))) - (1 / (1 + np.exp(-10 * (t - 0.7))))
-                trend[start_idx:end_idx] = trend_direction * trend_strength * base_price * smooth_trend
-            
-            trend = np.cumsum(trend)  # 累积趋势
-            
-            # 2. 波动聚集（GARCH 简化版：高波动后跟高波动）
-            volatility_base = np.random.uniform(0.015, 0.025)
-            volatility = np.zeros(days)
-            volatility[0] = volatility_base
-            
-            for i in range(1, days):
-                # 波动率持续性（80% 继承 + 20% 随机）
-                volatility[i] = 0.8 * volatility[i-1] + 0.2 * np.random.uniform(0.01, 0.04)
-            
-            # 3. 随机游走（带波动聚集）
-            returns = np.random.randn(days) * volatility
-            random_walk = np.cumsum(returns) * base_price * 0.1
-            
-            # 4. 周期成分（正弦波，模拟市场波动）
-            cycle_period = np.random.uniform(30, 90)
-            cycle = np.sin(np.linspace(0, 2 * np.pi * days / cycle_period, days)) * base_price * 0.03
-            
-            # 合并所有成分
-            prices = base_price + trend + random_walk + cycle
-            
-            # 确保价格为正（设置合理范围）
-            prices = np.clip(prices, base_price * 0.5, base_price * 2.5)
-            
-            # 5. 生成 OHLC（带日内波动）
-            daily_range = volatility * prices * np.random.uniform(1.5, 3.0, days)
-            
-            open_prices = prices + np.random.randn(days) * daily_range * 0.3
-            close_prices = prices + np.random.randn(days) * daily_range * 0.3
-            high_prices = np.maximum(open_prices, close_prices) + np.abs(np.random.randn(days)) * daily_range * 0.5
-            low_prices = np.minimum(open_prices, close_prices) - np.abs(np.random.randn(days)) * daily_range * 0.5
-            
-            self.data[symbol] = pd.DataFrame({
-                "open": open_prices,
-                "high": high_prices,
-                "low": low_prices,
-                "close": close_prices,
-                "volume": np.random.randint(50000, 200000, days).astype(float)
-            }, index=dates)
-            
-            # 修正 high/low 关系
-            self.data[symbol]["high"] = self.data[symbol][["open", "high", "close"]].max(axis=1)
-            self.data[symbol]["low"] = self.data[symbol][["open", "low", "close"]].min(axis=1)
+        print(f"   ✅ Full history generated for {len(CONTRACTS)} contracts.")
+
+    def _create_ohlcv_from_path(self, price_path, dates):
+        closes = price_path
+        noise = np.random.normal(0, closes * 0.0002, len(closes))
+        opens = closes + noise
+        highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, closes * 0.0005, len(closes)))
+        lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, closes * 0.0005, len(closes)))
+        volumes = np.random.randint(10, 1000, len(closes)).astype(float)
         
-        # 打印统计信息
-        print(f"   ✅ 生成了 {len(self.data)} 个合约的公平模拟数据")
+        return pd.DataFrame({
+            "open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes
+        }, index=dates)
+
+    def _resample_and_save(self, symbol, df_1m):
+        for tf_label, tf_offset in TIMEFRAMES.items():
+            resampled = df_1m.resample(tf_offset).agg({
+                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+            }).dropna()
+            
+            tf_dir = os.path.join(self.base_dir, tf_label)
+            os.makedirs(tf_dir, exist_ok=True)
+            resampled.to_parquet(os.path.join(tf_dir, f"{symbol}.parquet"))
+
+    def get_ohlcv(self, symbol, timeframe="1d", start_date=None, end_date=None):
+        """Fast getter using memory cache."""
+        data = self.load_data(timeframe)
+        if symbol not in data: return None
         
-        # 统计各类型数量
-        categories = {}
-        for symbol in self.data.keys():
-            cat = CONTRACTS.get(symbol, {}).get("category", "其他")
-            categories[cat] = categories.get(cat, 0) + 1
-        for cat, count in categories.items():
-            print(f"      {cat}: {count} 个")
-    
-    def _save_data(self):
-        """保存数据到 CSV 文件"""
-        os.makedirs(self.data_dir, exist_ok=True)
-        for symbol, df in self.data.items():
-            filepath = f"{self.data_dir}{symbol}.csv"
-            # 确保 date 列作为普通列保存（不是索引）
-            df_reset = df.reset_index()
-            df_reset.rename(columns={'index': 'date'}, inplace=True)
-            df_reset.to_csv(filepath, index=False)
-        print(f"   💾 已保存 {len(self.data)} 个合约数据到 {self.data_dir}")
-    
-    def get_ohlcv(self, symbol, start_date=None, end_date=None):
-        """获取 OHLCV 数据"""
-        if symbol not in self.data:
-            return None
-        df = self.data[symbol].copy()
-        if start_date:
-            df = df[df.index >= start_date]
-        if end_date:
-            df = df[df.index <= end_date]
+        # Avoid deep copy unless slicing is needed
+        df = data[symbol]
+        if start_date or end_date:
+            df = df.copy()
+            if start_date: df = df[df.index >= start_date]
+            if end_date: df = df[df.index <= end_date]
         return df
-    
-    def get_latest(self, symbol, n=1):
-        """获取最新 n 条"""
-        if symbol in self.data:
-            return self.data[symbol].iloc[-n:]
-        return None
-    
-    def get_price_dict(self):
-        """获取最新价格字典"""
-        return {symbol: df["close"].iloc[-1] for symbol, df in self.data.items()}
-    
-    def get_prices_history(self, symbol, n=100):
-        """获取历史价格序列"""
-        if symbol in self.data:
-            return self.data[symbol]["close"].iloc[-n:]
-        return None
+
+    def get_latest(self, symbol, timeframe="1d", n=1):
+        df = self.get_ohlcv(symbol, timeframe)
+        return df.iloc[-n:] if df is not None else None
+
+    def get_all_symbols(self):
+        return list(CONTRACTS.keys())

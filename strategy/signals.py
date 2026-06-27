@@ -114,7 +114,7 @@ class StrategyGenerator:
         return None
     
     def _trend_signal(self, symbol: str, strategy: Dict, df: pd.DataFrame) -> Dict:
-        """趋势策略信号 - 优化版"""
+        """趋势策略信号 - 最敏感版本"""
         period = strategy.get("period", 20)
         ma_col = f"MA_{period}" if "MA" in strategy["name"] else f"EMA_{period}"
         
@@ -124,13 +124,12 @@ class StrategyGenerator:
         current_price = df["close"].iloc[-1]
         ma_value = df[ma_col].iloc[-1]
         
-        # 简化逻辑：价格在均线上方做多，下方做空
-        # 短期均线更敏感，长期均线更保守
-        threshold_pct = period / 100  # 5 日=5%, 60 日=60%
+        # 最敏感的阈值：1%-3%
+        threshold_pct = 0.01 if period <= 10 else 0.03
         
-        # 价格显著高于均线 -> 做多信号
-        if current_price > ma_value * (1 + threshold_pct * 0.5):
-            confidence = min(0.9, 0.5 + (current_price - ma_value) / ma_value * 10)
+        # 价格在均线上方 -> 做多信号
+        if current_price > ma_value * (1 + threshold_pct):
+            confidence = min(0.9, 0.5 + (current_price - ma_value) / ma_value * 30)
             return {
                 "symbol": symbol,
                 "name": strategy["name"],
@@ -139,9 +138,9 @@ class StrategyGenerator:
                 "timestamp": df.index[-1]
             }
         
-        # 价格显著低于均线 -> 做空信号
-        if current_price < ma_value * (1 - threshold_pct * 0.5):
-            confidence = min(0.9, 0.5 + (ma_value - current_price) / ma_value * 10)
+        # 价格在均线下方 -> 做空信号
+        if current_price < ma_value * (1 - threshold_pct):
+            confidence = min(0.9, 0.5 + (ma_value - current_price) / ma_value * 30)
             return {
                 "symbol": symbol,
                 "name": strategy["name"],
@@ -153,7 +152,7 @@ class StrategyGenerator:
         return None
     
     def _momentum_signal(self, symbol: str, strategy: Dict, df: pd.DataFrame) -> Dict:
-        """动量策略信号 - 优化版"""
+        """动量策略信号 - 最敏感版本"""
         name = strategy["name"]
         
         if "MACD" in name:
@@ -163,12 +162,13 @@ class StrategyGenerator:
             macd = df["MACD"].iloc[-1]
             signal = df["MACD_Signal"].iloc[-1]
             
-            # 简化：MACD 在信号线上方做多，下方做空
+            # 简化：MACD > 0 且 MACD > 信号线做多
             if "Golden" in name:
                 if macd > signal:
                     confidence = 0.7 if "Strong" in name else 0.6
                     return {"symbol": symbol, "name": name, "direction": "buy", "confidence": confidence}
             
+            # MACD < 0 且 MACD < 信号线做空
             elif "Dead" in name:
                 if macd < signal:
                     confidence = 0.7 if "Strong" in name else 0.6
@@ -181,18 +181,18 @@ class StrategyGenerator:
             k = df["KDJ_K"].iloc[-1]
             d = df["KDJ_D"].iloc[-1]
             
-            # 简化：K>D 且 K<80 做多，K<D 且 K>20 做空
+            # 简化：K>D 做多，K<D 做空
             if "Golden" in name:
-                if k > d and k < 80:
-                    return {"symbol": symbol, "name": name, "direction": "buy", "confidence": 0.65}
+                if k > d:
+                    return {"symbol": symbol, "name": name, "direction": "buy", "confidence": 0.6}
             elif "Dead" in name:
-                if k < d and k > 20:
-                    return {"symbol": symbol, "name": name, "direction": "sell", "confidence": 0.65}
+                if k < d:
+                    return {"symbol": symbol, "name": name, "direction": "sell", "confidence": 0.6}
         
         return None
     
     def _reversal_signal(self, symbol: str, strategy: Dict, df: pd.DataFrame) -> Dict:
-        """反转策略信号 - 优化版"""
+        """反转策略信号 - 更敏感版本"""
         threshold = strategy.get("threshold", 30)
         
         if "RSI" in strategy["name"]:
@@ -202,12 +202,12 @@ class StrategyGenerator:
             rsi = df["RSI_14"].iloc[-1]
             
             # 超卖买入 (RSI < 阈值)
-            if threshold < 50 and rsi < threshold + 10:  # 放宽门槛
+            if threshold < 50 and rsi < threshold + 15:  # 放宽到 +15
                 confidence = 0.8 if threshold == 20 else 0.7
                 return {"symbol": symbol, "name": strategy["name"], "direction": "buy", "confidence": confidence}
             
             # 超买卖出 (RSI > 阈值)
-            elif threshold > 50 and rsi > threshold - 10:  # 放宽门槛
+            elif threshold > 50 and rsi > threshold - 15:  # 放宽到 -15
                 confidence = 0.8 if threshold == 80 else 0.7
                 return {"symbol": symbol, "name": strategy["name"], "direction": "sell", "confidence": confidence}
         
@@ -219,13 +219,13 @@ class StrategyGenerator:
             lower = df["BB_Lower"].iloc[-1]
             upper = df["BB_Upper"].iloc[-1]
             
-            # 接近下轨买入
+            # 接近下轨买入（放宽到 5%）
             if "BB_Lower" in strategy["name"]:
-                if price < lower * 1.02:  # 在下轨附近 2%
+                if price < lower * 1.05:
                     return {"symbol": symbol, "name": strategy["name"], "direction": "buy", "confidence": 0.6}
-            # 接近上轨卖出
+            # 接近上轨卖出（放宽到 5%）
             elif "BB_Upper" in strategy["name"]:
-                if price > upper * 0.98:  # 在上轨附近 2%
+                if price > upper * 0.95:
                     return {"symbol": symbol, "name": strategy["name"], "direction": "sell", "confidence": 0.6}
         
         return None

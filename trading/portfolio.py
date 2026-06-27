@@ -17,12 +17,19 @@ class Position:
         self.take_profit = take_profit  # 止盈价
     
     def update_pnl(self, current_price):
-        """更新盈亏"""
+        """更新盈亏并更新追踪止损"""
         mult = CONTRACTS[self.symbol]["multiplier"]
         if self.direction == "long":
             self.pnl = (current_price - self.entry_price) * mult * self.quantity
+            # 追踪止损：价格创新高时，止损线向上移动 (保持 2*ATR 或固定比例)
+            if current_price > self.entry_price and self.stop_loss > 0:
+                new_stop = current_price * 0.97 # 简单实现：维持在价格 3% 处
+                self.stop_loss = max(self.stop_loss, new_stop)
         else:
             self.pnl = (self.entry_price - current_price) * mult * self.quantity
+            if current_price < self.entry_price and self.stop_loss > 0:
+                new_stop = current_price * 1.03
+                self.stop_loss = min(self.stop_loss, new_stop)
         cost = self.entry_price * mult * self.quantity
         self.pnl_pct = self.pnl / cost if cost > 0 else 0
     
